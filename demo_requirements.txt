@@ -1,0 +1,12 @@
+# Khoji liveness demo - minimal dependency set (Windows).
+# On Windows, PyPI's torch wheels are CPU-only builds, so this works on any
+# machine - no CUDA/GPU required. Installed automatically by run_demo.bat.
+numpy
+opencv-python>=4.8
+pillow>=10.0
+torch>=2.2
+torchvision>=0.17
+timm>=1.0
+fastapi>=0.110
+uvicorn>=0.27
+python-multipart>=0.0.9

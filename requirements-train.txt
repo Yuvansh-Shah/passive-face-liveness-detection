@@ -1,0 +1,6 @@
+# Training and evaluation (a CUDA build of torch is recommended).
+-r demo_requirements.txt
+datasets
+pyarrow
+scikit-learn
+matplotlib

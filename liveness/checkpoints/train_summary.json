@@ -1,0 +1,7 @@
+{
+  "arch": "mobilenetv3_large_100",
+  "epochs": 14,
+  "batch_size": 32,
+  "lr": 0.0003,
+  "best_val_acc": 0.9837467921300257
+}

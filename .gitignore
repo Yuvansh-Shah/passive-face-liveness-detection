@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.venv/
+# The API saves every uploaded image here for debugging. Never commit it.
+liveness/debug_uploads/
+*.log
+*.err
+*.zip

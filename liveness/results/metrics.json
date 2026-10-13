@@ -1,0 +1,19 @@
+{
+  "test_images": 1154,
+  "accuracy": 0.9861,
+  "live_recall": 0.9863,
+  "spoof_recall": 0.9859,
+  "roc_auc": 0.9985,
+  "confusion_matrix": {
+    "rows=true[live,spoof]": [
+      [
+        577,
+        8
+      ],
+      [
+        8,
+        561
+      ]
+    ]
+  }
+}

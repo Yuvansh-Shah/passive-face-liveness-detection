@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Khoji — Liveness Detection Demo</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>&#128065;&#65039;</text></svg>">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --accent: #4f46e5;
+    --accent-soft: #eef2ff;
+    --live: #16a34a;
+    --live-soft: #f0fdf4;
+    --spoof: #dc2626;
+    --spoof-soft: #fef2f2;
+    --warn: #d97706;
+    --warn-soft: #fffbeb;
+    --ink: #1e293b;
+    --muted: #64748b;
+    --line: #e2e8f0;
+    --bg: #f1f5f9;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 32px 16px;
+  }
+  header { text-align: center; margin-bottom: 24px; }
+  header h1 { font-size: 1.7rem; font-weight: 700; letter-spacing: -0.02em; }
+  header h1 .brand { color: var(--accent); }
+  header p { color: var(--muted); margin-top: 6px; font-size: 0.95rem; }
+
+  .card {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    box-shadow: 0 4px 24px rgba(30, 41, 59, 0.06);
+    width: 100%;
+    max-width: 900px;
+    padding: 28px;
+  }
+  .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+  @media (max-width: 720px) { .columns { grid-template-columns: 1fr; } }
+
+  .col-title {
+    font-size: 0.8rem; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--muted); margin-bottom: 12px;
+  }
+
+  /* ---- tabs ---- */
+  .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+  .tab {
+    flex: 1; padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px;
+    background: #fff; color: var(--muted); font-size: 0.9rem; font-weight: 600;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .tab.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  .tab:hover:not(.active) { border-color: #cbd5e1; }
+
+  /* ---- upload panel ---- */
+  #dropzone {
+    border: 2px dashed #cbd5e1; border-radius: 12px; padding: 36px 16px;
+    text-align: center; cursor: pointer; color: var(--muted);
+    transition: all 0.15s; background: #fafbfc;
+  }
+  #dropzone:hover, #dropzone.dragover { border-color: var(--accent); background: var(--accent-soft); }
+  #dropzone .dz-icon { font-size: 2rem; display: block; margin-bottom: 8px; }
+  #dropzone strong { color: var(--ink); }
+  #dropzone p { font-size: 0.9rem; line-height: 1.5; }
+
+  /* ---- webcam panel ---- */
+  #cam-stage {
+    position: relative; width: 100%; max-width: 320px; aspect-ratio: 1 / 1;
+    margin: 0 auto; border-radius: 12px; overflow: hidden; background: #0f172a;
+    display: none;
+  }
+  #cam-video {
+    width: 100%; height: 100%; object-fit: cover;
+    transform: scaleX(-1);
+  }
+  #cam-guide {
+    position: absolute; inset: 12%; border: 2px solid rgba(255,255,255,0.55);
+    border-radius: 50% / 42%; pointer-events: none;
+  }
+  #cam-hint {
+    position: absolute; bottom: 8px; left: 0; right: 0; text-align: center;
+    color: rgba(255,255,255,0.85); font-size: 0.75rem; pointer-events: none;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+  }
+  .cam-controls { display: flex; gap: 8px; justify-content: center; margin-top: 12px; }
+
+  /* ---- buttons ---- */
+  .btn {
+    padding: 10px 18px; border-radius: 10px; border: 1px solid var(--line);
+    background: #fff; color: var(--ink); font-size: 0.92rem; font-weight: 600;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .btn:hover { border-color: #cbd5e1; background: #f8fafc; }
+  .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn-primary:hover { background: #4338ca; border-color: #4338ca; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-primary:disabled:hover { background: var(--accent); }
+
+  /* ---- staged image ---- */
+  #staged { display: none; margin-top: 16px; text-align: center; }
+  #staged-img {
+    max-width: 200px; max-height: 200px; border-radius: 10px;
+    border: 1px solid var(--line); display: block; margin: 0 auto 12px;
+  }
+  .staged-actions { display: flex; gap: 8px; justify-content: center; }
+
+  /* ---- messages ---- */
+  .msg {
+    display: none; margin-top: 12px; padding: 10px 14px; border-radius: 10px;
+    font-size: 0.88rem; line-height: 1.45;
+  }
+  .msg.error { background: var(--spoof-soft); color: #991b1b; border: 1px solid #fecaca; }
+
+  /* ---- result column ---- */
+  #result-box {
+    border: 1px solid var(--line); border-radius: 12px; min-height: 320px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 20px; text-align: center; background: #fafbfc;
+  }
+  #result-empty { color: var(--muted); font-size: 0.92rem; line-height: 1.6; }
+  #result-empty .re-icon { font-size: 2rem; display: block; margin-bottom: 8px; opacity: 0.6; }
+
+  #result-loading { display: none; color: var(--muted); font-size: 0.95rem; }
+  .spinner {
+    width: 36px; height: 36px; margin: 0 auto 14px;
+    border: 4px solid var(--line); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  #result-content { display: none; width: 100%; }
+  #result-img {
+    max-width: 180px; max-height: 180px; border-radius: 10px;
+    border: 1px solid var(--line); display: block; margin: 0 auto 16px;
+  }
+  #verdict {
+    display: inline-block; font-size: 1.6rem; font-weight: 800; letter-spacing: 0.04em;
+    padding: 8px 28px; border-radius: 12px; margin-bottom: 10px;
+  }
+  #verdict.live { background: var(--live-soft); color: var(--live); border: 2px solid var(--live); }
+  #verdict.spoof { background: var(--spoof-soft); color: var(--spoof); border: 2px solid var(--spoof); }
+  #verdict.notice { background: var(--warn-soft); color: var(--warn); border: 2px solid var(--warn); font-size: 1.15rem; }
+  #result-note { display: none; font-size: 0.84rem; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+  #confidence { font-size: 1rem; color: var(--ink); margin-bottom: 16px; }
+  #confidence strong { font-size: 1.15rem; }
+
+  .prob-bar-wrap { max-width: 280px; margin: 0 auto; text-align: left; }
+  .prob-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 0.8rem; }
+  .prob-row .prob-name { width: 44px; color: var(--muted); font-weight: 600; }
+  .prob-track { flex: 1; height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; }
+  .prob-fill { height: 100%; border-radius: 4px; transition: width 0.4s ease; }
+  .prob-fill.live { background: var(--live); }
+  .prob-fill.spoof { background: var(--spoof); }
+  .prob-row .prob-val { width: 46px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span class="brand">Khoji</span> · Liveness Detection</h1>
+</header>
+
+<div class="card">
+  <div class="columns">
+
+    <!-- ============ INPUT COLUMN ============ -->
+    <div>
+      <div class="col-title">1 · Provide an image</div>
+
+      <div class="tabs">
+        <button class="tab active" id="tab-upload" type="button">&#128193; Upload image</button>
+        <button class="tab" id="tab-webcam" type="button">&#128247; Use webcam</button>
+      </div>
+
+      <!-- upload panel -->
+      <div id="panel-upload">
+        <div id="dropzone" tabindex="0" role="button" aria-label="Upload an image">
+          <span class="dz-icon">&#128444;&#65039;</span>
+          <p><strong>Drag &amp; drop</strong> an image here,<br>or <strong>click to browse</strong></p>
+        </div>
+        <input type="file" id="file-input" accept="image/*" hidden>
+      </div>
+
+      <!-- webcam panel -->
+      <div id="panel-webcam" style="display:none">
+        <div id="cam-stage">
+          <video id="cam-video" autoplay playsinline muted></video>
+          <div id="cam-guide"></div>
+          <div id="cam-hint">Center your face in the frame</div>
+        </div>
+        <div class="cam-controls">
+          <button class="btn btn-primary" id="btn-start-cam" type="button">Start camera</button>
+          <button class="btn btn-primary" id="btn-capture" type="button" style="display:none">Capture photo</button>
+        </div>
+      </div>
+
+      <!-- staged image (shared by both panels) -->
+      <div id="staged">
+        <img id="staged-img" alt="Selected image">
+        <div class="staged-actions">
+          <button class="btn btn-primary" id="btn-submit" type="button">Check liveness</button>
+          <button class="btn" id="btn-clear" type="button">Clear</button>
+        </div>
+      </div>
+
+      <div class="msg error" id="input-error"></div>
+    </div>
+
+    <!-- ============ RESULT COLUMN ============ -->
+    <div>
+      <div class="col-title">2 · Result</div>
+      <div id="result-box">
+
+        <div id="result-empty">
+          <span class="re-icon">&#128269;</span>
+          Upload or capture a face photo,<br>then press <strong>Check liveness</strong>.
+        </div>
+
+        <div id="result-loading">
+          <div class="spinner"></div>
+          Analyzing image&hellip;
+        </div>
+
+        <div id="result-content">
+          <img id="result-img" alt="Submitted image">
+          <div><span id="verdict"></span></div>
+          <div id="confidence"></div>
+          <div id="result-note"></div>
+          <div class="prob-bar-wrap">
+            <div class="prob-row">
+              <span class="prob-name">Live</span>
+              <div class="prob-track"><div class="prob-fill live" id="bar-live"></div></div>
+              <span class="prob-val" id="val-live"></span>
+            </div>
+            <div class="prob-row">
+              <span class="prob-name">Spoof</span>
+              <div class="prob-track"><div class="prob-fill spoof" id="bar-spoof"></div></div>
+              <span class="prob-val" id="val-spoof"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="msg error" id="result-error"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- element handles ----------
+  var $ = function (id) { return document.getElementById(id); };
+  var tabUpload = $("tab-upload"), tabWebcam = $("tab-webcam");
+  var panelUpload = $("panel-upload"), panelWebcam = $("panel-webcam");
+  var dropzone = $("dropzone"), fileInput = $("file-input");
+  var camStage = $("cam-stage"), camVideo = $("cam-video");
+  var btnStartCam = $("btn-start-cam"), btnCapture = $("btn-capture");
+  var staged = $("staged"), stagedImg = $("staged-img");
+  var btnSubmit = $("btn-submit"), btnClear = $("btn-clear");
+  var inputError = $("input-error");
+  var resultEmpty = $("result-empty"), resultLoading = $("result-loading"),
+      resultContent = $("result-content"), resultError = $("result-error");
+  var resultImg = $("result-img"), verdict = $("verdict"), confidence = $("confidence");
+  var resultNote = $("result-note");
+  var probWrap = document.querySelector(".prob-bar-wrap");
+  var barLive = $("bar-live"), barSpoof = $("bar-spoof");
+  var valLive = $("val-live"), valSpoof = $("val-spoof");
+
+  // ---------- state ----------
+  var stagedBlob = null;    // Blob/File queued for submission
+  var stagedUrl = null;     // object URL for preview
+  var camStream = null;     // active MediaStream
+  var submitSeq = 0;        // invalidates in-flight responses when staging changes
+
+  // a drop anywhere outside the dropzone must not navigate the tab to the file
+  ["dragover", "drop"].forEach(function (ev) {
+    window.addEventListener(ev, function (e) { e.preventDefault(); });
+  });
+
+  // ---------- helpers ----------
+  function showInputError(msg) {
+    inputError.textContent = msg;
+    inputError.style.display = "block";
+  }
+  function clearInputError() { inputError.style.display = "none"; }
+
+  function showResultState(state) { // "empty" | "loading" | "content" | "error"
+    resultEmpty.style.display = state === "empty" ? "block" : "none";
+    resultLoading.style.display = state === "loading" ? "block" : "none";
+    resultContent.style.display = state === "content" ? "block" : "none";
+    resultError.style.display = state === "error" ? "block" : "none";
+  }
+
+  function dropPendingResponse() {
+    submitSeq++;
+    if (resultLoading.style.display === "block") showResultState("empty");
+  }
+
+  function clearStaged() {
+    dropPendingResponse();
+    stagedBlob = null;
+    if (stagedUrl) { URL.revokeObjectURL(stagedUrl); stagedUrl = null; }
+    staged.style.display = "none";
+    fileInput.value = "";
+  }
+
+  function stageBlob(blob) {
+    clearInputError();
+    dropPendingResponse();
+    if (stagedUrl) URL.revokeObjectURL(stagedUrl);
+    stagedBlob = blob;
+    stagedUrl = URL.createObjectURL(blob);
+    stagedImg.src = stagedUrl;
+    staged.style.display = "block";
+    btnSubmit.disabled = false;
+  }
+
+  // reject files the browser itself can't decode as an image
+  stagedImg.addEventListener("error", function () {
+    if (!stagedBlob) return;
+    clearStaged();
+    showInputError("That file doesn’t look like a readable image. Please choose a JPG or PNG.");
+  });
+
+  function handleFile(file) {
+    if (!file) return;
+    if (file.type && file.type.indexOf("image/") !== 0) {
+      showInputError("“" + file.name + "” isn’t an image file. Please choose a JPG or PNG.");
+      return;
+    }
+    stageBlob(file);
+  }
+
+  // ---------- tabs ----------
+  function setTab(which) {
+    var isUpload = which === "upload";
+    tabUpload.classList.toggle("active", isUpload);
+    tabWebcam.classList.toggle("active", !isUpload);
+    panelUpload.style.display = isUpload ? "block" : "none";
+    panelWebcam.style.display = isUpload ? "none" : "block";
+    clearInputError();
+    if (isUpload) stopCamera();
+  }
+  tabUpload.addEventListener("click", function () { setTab("upload"); });
+  tabWebcam.addEventListener("click", function () { setTab("webcam"); });
+
+  // ---------- upload: click + drag-and-drop ----------
+  dropzone.addEventListener("click", function () { fileInput.click(); });
+  dropzone.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInput.click(); }
+  });
+  fileInput.addEventListener("change", function () { handleFile(fileInput.files[0]); });
+
+  ["dragenter", "dragover"].forEach(function (ev) {
+    dropzone.addEventListener(ev, function (e) {
+      e.preventDefault(); e.stopPropagation();
+      dropzone.classList.add("dragover");
+    });
+  });
+  ["dragleave", "drop"].forEach(function (ev) {
+    dropzone.addEventListener(ev, function (e) {
+      e.preventDefault(); e.stopPropagation();
+      dropzone.classList.remove("dragover");
+    });
+  });
+  dropzone.addEventListener("drop", function (e) {
+    var files = e.dataTransfer && e.dataTransfer.files;
+    if (!files || files.length === 0) {
+      showInputError("Nothing droppable there — try dragging an image file.");
+      return;
+    }
+    handleFile(files[0]);
+  });
+
+  // ---------- webcam ----------
+  function stopCamera() {
+    if (camStream) {
+      camStream.getTracks().forEach(function (t) { t.stop(); });
+      camStream = null;
+    }
+    camVideo.srcObject = null;
+    camStage.style.display = "none";
+    btnCapture.style.display = "none";
+    btnStartCam.style.display = "inline-block";
+  }
+
+  btnStartCam.addEventListener("click", function () {
+    clearInputError();
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      showInputError("This browser doesn’t support webcam capture. Use the Upload tab instead.");
+      return;
+    }
+    btnStartCam.disabled = true;
+    navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
+      audio: false
+    }).then(function (stream) {
+      if (!tabWebcam.classList.contains("active")) {
+        // user switched tabs while the permission prompt was up — don't
+        // leave the camera running invisibly
+        stream.getTracks().forEach(function (t) { t.stop(); });
+        return;
+      }
+      camStream = stream;
+      camVideo.srcObject = stream;
+      camStage.style.display = "block";
+      btnStartCam.style.display = "none";
+      btnCapture.style.display = "inline-block";
+    }).catch(function (err) {
+      var msg;
+      if (err && (err.name === "NotAllowedError" || err.name === "PermissionDeniedError")) {
+        msg = "Camera access was denied. Allow camera permission for this page and try again, or use the Upload tab.";
+      } else if (err && (err.name === "NotFoundError" || err.name === "DevicesNotFoundError")) {
+        msg = "No camera was found on this device. Use the Upload tab instead.";
+      } else if (err && err.name === "NotReadableError") {
+        msg = "The camera is in use by another application. Close it and try again.";
+      } else {
+        msg = "Could not start the camera (" + (err && err.name ? err.name : "unknown error") + "). Use the Upload tab instead.";
+      }
+      showInputError(msg);
+    }).finally(function () {
+      btnStartCam.disabled = false;
+    });
+  });
+
+  btnCapture.addEventListener("click", function () {
+    var vw = camVideo.videoWidth, vh = camVideo.videoHeight;
+    if (!vw || !vh) {
+      showInputError("The camera isn’t ready yet — give it a second and try again.");
+      return;
+    }
+    // Capture the centered square that the preview shows (object-fit: cover on a
+    // square stage), mirrored to match what the user sees.
+    var side = Math.min(vw, vh);
+    var out = Math.min(side, 720);
+    var canvas = document.createElement("canvas");
+    canvas.width = out; canvas.height = out;
+    var ctx = canvas.getContext("2d");
+    ctx.translate(out, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(camVideo, (vw - side) / 2, (vh - side) / 2, side, side, 0, 0, out, out);
+    canvas.toBlob(function (blob) {
+      if (!blob) {
+        showInputError("Could not read a frame from the camera. Try capturing again.");
+        return;
+      }
+      stageBlob(blob);
+    }, "image/jpeg", 0.92);
+  });
+
+  // ---------- clear ----------
+  btnClear.addEventListener("click", function () {
+    clearStaged();
+    clearInputError();
+    showResultState("empty");
+  });
+
+  // ---------- submit ----------
+  btnSubmit.addEventListener("click", function () {
+    if (!stagedBlob) {
+      showInputError("No image selected yet — upload or capture one first.");
+      return;
+    }
+    btnSubmit.disabled = true;
+    showResultState("loading");
+
+    // snapshot what we're submitting: if the user clears or stages a new
+    // image while this request is in flight, the response is dropped
+    var seq = ++submitSeq;
+    var urlAtSubmit = stagedUrl;
+
+    var form = new FormData();
+    var filename = stagedBlob.name || "capture.jpg";
+    form.append("file", stagedBlob, filename);
+
+    fetch("/predict", { method: "POST", body: form })
+      .then(function (resp) {
+        return resp.json().catch(function () { return null; }).then(function (data) {
+          if (!resp.ok) {
+            var detail = data && data.detail ? data.detail : ("server returned " + resp.status);
+            throw new Error(detail);
+          }
+          var notice = data && (data.status === "face_too_small" || data.status === "no_face");
+          if (!data || (!notice && (!data.label || typeof data.confidence !== "number"))) {
+            throw new Error("unexpected response from the API");
+          }
+          return data;
+        });
+      })
+      .then(function (data) { renderResult(data, urlAtSubmit, seq); })
+      .catch(function (err) {
+        if (seq !== submitSeq) return;
+        var msg = (err && err.message === "Failed to fetch")
+          ? "Could not reach the API. Is the server still running?"
+          : "Prediction failed: " + (err && err.message ? err.message : "unknown error") + ".";
+        resultError.textContent = msg;
+        showResultState("error");
+      })
+      .finally(function () {
+        btnSubmit.disabled = false;
+      });
+  });
+
+  function renderResult(data, urlAtSubmit, seq) {
+    if (seq !== submitSeq) return; // stale response — staging changed meanwhile
+    resultImg.src = urlAtSubmit || "";
+
+    if (data.status === "face_too_small" || data.status === "no_face") {
+      verdict.textContent = data.status === "no_face" ? "NO FACE FOUND" : "MOVE CLOSER";
+      verdict.className = "notice";
+      confidence.innerHTML = "";
+      resultNote.textContent = data.message ||
+        "Could not make a reliable decision — adjust the shot and try again.";
+      resultNote.style.display = "block";
+      probWrap.style.display = "none";
+      showResultState("content");
+      return;
+    }
+
+    var isLive = String(data.label).toLowerCase() === "live";
+    verdict.textContent = isLive ? "LIVE" : "SPOOF";
+    verdict.className = isLive ? "live" : "spoof";
+    confidence.innerHTML = "Confidence: <strong>" +
+      (data.confidence * 100).toFixed(1) + "%</strong>";
+    resultNote.textContent = data.note || "";
+    resultNote.style.display = data.note ? "block" : "none";
+    probWrap.style.display = "block";
+
+    var pLive = 0, pSpoof = 0;
+    if (data.probs) {
+      pLive = data.probs.live || 0;
+      pSpoof = data.probs.spoof || 0;
+    } else {
+      pLive = isLive ? data.confidence : 1 - data.confidence;
+      pSpoof = 1 - pLive;
+    }
+    barLive.style.width = (pLive * 100).toFixed(1) + "%";
+    barSpoof.style.width = (pSpoof * 100).toFixed(1) + "%";
+    valLive.textContent = (pLive * 100).toFixed(1) + "%";
+    valSpoof.textContent = (pSpoof * 100).toFixed(1) + "%";
+
+    showResultState("content");
+  }
+})();
+</script>
+</body>
+</html>
